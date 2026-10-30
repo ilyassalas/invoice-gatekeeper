@@ -1,0 +1,23 @@
+[
+  {
+    "mode": "eval",
+    "source": "pin",
+    "source_ref": "",
+    "file_name": "inv-01.pdf",
+    "text": "FACTURE\n\nCartonnages Rhône-Alpes SAS\n14 rue des Emballeurs\n38000 Grenoble, France\nSIREN 000 111 222 · N° TVA intracom. FR00000111222\n\nN° de facture : FA-2026-0412\nDate de facture : 12/09/2026\nDate d'échéance : 12/10/2026\nBon de commande : PO-2026-0101\n\nFacturé à\nMaison Lumen SAS\n8 allée des Lanternes\n69000 Lyon, France\nN° TVA intracom. FR90000999888\n\nRéf.\n\nDésignation\n\nQté\n\nPU HT\n\nMontant HT\n\nBOX-S-20\n\nCarton d'expédition S (20×15×10 cm)\n\n250\n\n0,42 €\n\n105,00 €\n\nBOX-M-30\n\nCarton d'expédition M (30×20×15 cm)\n\n150\n\n0,68 €\n\n102,00 €\n\nTotal HT\n\n207,00 €\n\nTVA 20 %\n\n41,40 €\n\nTotal TTC\n\n248,40 €\n\nPaiement à 30 jours par virement. Pénalités de retard : 3 fois le taux d'intérêt légal. Indemnité forfaitaire pour frais de\nrecouvrement : 40 €.\n\nDocument de démonstration — sociétés fictives (projet portfolio « Invoice Gatekeeper »). Ne pas utiliser comme facture réelle."
+  },
+  {
+    "mode": "eval",
+    "source": "pin",
+    "source_ref": "",
+    "file_name": "inv-17.pdf",
+    "text": "BUREAU EXPRESS FOURNITURES\n60 boulevard du Commerce, 69003 Lyon, France — SIREN 000 444 555 · N° TVA intracom. FR33000444555\n\nFACTURE N° BE-55203\nDate de facture :\nDate d'échéance :\nBon de commande :\nClient :\n\n12/10/2026\n11/11/2026\nPO-2026-0109\nMaison Lumen SAS, 8 allée des Lanternes, 69000 Lyon, France\nN° TVA intracom. FR90000999888\n\nRéf.\n\nDésignation\n\nTONER-X2\n\nToner imprimante X2\n\nQté\n\nPU HT\n\nMontant HT\n\n2\n\n46,00 €\n\n92,00 €\n\nTotal HT\nTVA 20 %\n\n92,00 €\n18,40 €\n\nTotal TTC\n\n120,40 €\n\nPaiement à 30 jours par virement. Pénalités de retard : 3 fois le taux d'intérêt légal. Indemnité forfaitaire pour frais de recouvrement : 40\n€.\n\nDocument de démonstration — sociétés fictives (projet portfolio « Invoice Gatekeeper »). Ne pas utiliser comme facture réelle."
+  },
+  {
+    "mode": "eval",
+    "source": "pin",
+    "source_ref": "",
+    "file_name": "inv-15.pdf",
+    "text": "Céramiques du Vallon SARL\n3 chemin des Potiers · 26000 Valence, France\nSIREN 000 222 333 · N° TVA intracom. FR11000222333\n\nFacture\nN° DE FACTURE\n\nDATE DE FACTURE\n\nF2026-140\n\n08/10/2026\n\nDATE D'ÉCHÉANCE\n\nVOTRE COMMANDE N°\n\n8 allée des Lanternes\n\n07/11/2026\n\nPO-2026-0106\n\n69000 Lyon, France\n\nCLIENT\n\nMaison Lumen SAS\n\nN° TVA intracom. FR90000999888\n\nRéf.\n\nDésignation\n\nQté\n\nPU HT\n\nMontant HT\n\nVASE-ARG-L\n\nVase argile L\n\n20\n\n34,90 €\n\n698,00 €\n\nTotal HT\n\n698,00 €\n\nTVA 20 %\n\n139,60 €\n\nNet à payer\n\n837,60 €\n\nPaiement à 30 jours par virement. Pénalités de retard : 3 fois le taux d'intérêt légal. Indemnité forfaitaire pour frais de\nrecouvrement : 40 €.\n\nDocument de démonstration — sociétés fictives (projet portfolio « Invoice Gatekeeper »). Ne pas utiliser comme facture réelle."
+  }
+]

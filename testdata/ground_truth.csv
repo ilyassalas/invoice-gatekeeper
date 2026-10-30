@@ -1,0 +1,21 @@
+file_name,supplier_name,supplier_vat,invoice_number,invoice_date,due_date,currency,po_number,total_ht,total_vat,total_ttc,expected_status,expected_issue,language
+inv-01.pdf,Cartonnages Rhône-Alpes SAS,FR00000111222,FA-2026-0412,2026-09-12,2026-10-12,EUR,PO-2026-0101,207.00,41.40,248.40,auto_approved,,fr
+inv-02.pdf,Céramiques du Vallon SARL,FR11000222333,F2026-118,2026-09-14,2026-10-14,EUR,PO-2026-0102,610.00,122.00,732.00,auto_approved,,fr
+inv-03.pdf,Atelier Cire & Mèche,FR22000333444,AC-00791,2026-09-16,2026-10-16,EUR,PO-2026-0103,816.00,163.20,979.20,auto_approved,,fr
+inv-04.pdf,Shannon Pack Ltd,IE0001234X,SP-2026-3381,2026-09-18,2026-10-18,EUR,PO-2026-0104,385.00,0.00,385.00,auto_approved,,en
+inv-05.pdf,Cartonnages Rhône-Alpes SAS,FR00000111222,FA-2026-0438,2026-09-19,2026-10-19,EUR,PO-2026-0105,582.00,116.40,698.40,auto_approved,,fr
+inv-06.pdf,Bureau Express Fournitures,FR33000444555,BE-55120,2026-09-23,2026-10-23,EUR,PO-2026-0108,107.80,21.56,129.36,auto_approved,,fr
+inv-07.pdf,Atelier Cire & Mèche,FR22000333444,AC-00805,2026-09-25,2026-10-25,EUR,PO-2026-0107,470.00,94.00,564.00,auto_approved,,fr
+inv-08.pdf,Cartonnages Rhône-Alpes SAS,FR00000111222,FA-2026-0451,2026-09-28,2026-10-28,EUR,PO-2026-0101,302.00,60.40,362.40,auto_approved,,fr
+inv-09.pdf,Céramiques du Vallon SARL,FR11000222333,F2026-131,2026-09-30,2026-10-30,EUR,PO-2026-0102,730.00,146.00,876.00,auto_approved,,fr
+inv-10.pdf,Shannon Pack Ltd,IE0001234X,SP-2026-3417,2026-10-01,2026-10-31,EUR,PO-2026-0104,75.00,0.00,75.00,auto_approved,,en
+inv-11.pdf,Atelier Cire & Mèche,FR22000333444,AC-00812,2026-10-02,2026-11-01,EUR,PO-2026-0103,672.00,134.40,806.40,auto_approved,,fr
+inv-12.pdf,Bureau Express Fournitures,FR33000444555,BE-55187,2026-10-05,2026-11-04,EUR,PO-2026-0109,92.00,18.40,110.40,auto_approved,,fr
+inv-13.pdf,Shannon Pack Ltd,IE0001234X,SP-2026-3460,2026-10-06,2026-11-05,EUR,PO-2026-0110,440.00,0.00,440.00,auto_approved,,en
+inv-14.pdf,Cartonnages Rhône-Alpes SAS,FR00000111222,FA-2026-0412,2026-09-12,2026-10-12,EUR,PO-2026-0101,207.00,41.40,248.40,duplicate,duplicate,fr
+inv-15.pdf,Céramiques du Vallon SARL,FR11000222333,F2026-140,2026-10-08,2026-11-07,EUR,PO-2026-0106,698.00,139.60,837.60,needs_review,price_above_po,fr
+inv-16.pdf,Atelier Cire & Mèche,FR22000333444,AC-00826,2026-10-09,2026-11-08,EUR,PO-2026-0107,1128.00,225.60,1353.60,needs_review,qty_above_po,fr
+inv-17.pdf,Bureau Express Fournitures,FR33000444555,BE-55203,2026-10-12,2026-11-11,EUR,PO-2026-0109,92.00,18.40,120.40,needs_review,math_total,fr
+inv-18.pdf,Bureau Express Fournitures,FR33000444555,BE-55219,2026-10-13,2026-11-12,EUR,,55.90,11.18,67.08,needs_review,po_not_found,fr
+inv-19.pdf,Brightline Lighting Ltd,GB000123456,BL-7781,2026-10-14,2026-11-13,EUR,,435.00,0.00,435.00,needs_review,unknown_supplier,en
+inv-20.pdf,Céramiques du Vallon SARL,FR11000222333,F2026-152,2026-10-15,2026-11-14,EUR,PO-2026-0106,3690.00,738.00,4428.00,needs_review,above_approval_limit,fr

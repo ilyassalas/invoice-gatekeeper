@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "properties": {
+    "supplier_name": { "type": "string", "description": "Legal name of the company that ISSUED the invoice (the seller). Never the customer." },
+    "supplier_vat": { "type": "string", "description": "The seller's VAT number exactly as printed, without spaces. Empty string if absent." },
+    "invoice_number": { "type": "string", "description": "Invoice number exactly as printed. Empty string if absent." },
+    "invoice_date": { "type": "string", "description": "Invoice date as YYYY-MM-DD. Empty string if absent." },
+    "due_date": { "type": "string", "description": "Payment due date as YYYY-MM-DD. Empty string if absent." },
+    "currency": { "type": "string", "description": "ISO 4217 code, e.g. EUR, GBP, USD." },
+    "po_number": { "type": "string", "description": "The customer's purchase order reference (bon de commande, votre commande, PO number). Empty string if there is none." },
+    "lines": {
+      "type": "array",
+      "description": "One entry per invoice line, in the order printed.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "sku": { "type": "string", "description": "Product code / reference exactly as printed. Empty string if absent." },
+          "description": { "type": "string" },
+          "quantity": { "type": "number" },
+          "unit_price": { "type": "number", "description": "Unit price excluding VAT, as printed." },
+          "line_total": { "type": "number", "description": "Line amount excluding VAT, as printed." }
+        },
+        "required": ["sku", "description", "quantity", "unit_price", "line_total"]
+      }
+    },
+    "total_ht": { "type": "number", "description": "Total excluding VAT (Total HT / Subtotal), as printed." },
+    "total_vat": { "type": "number", "description": "VAT amount (TVA), as printed. 0 for reverse charge or zero-rated." },
+    "total_ttc": { "type": "number", "description": "Total to pay including VAT (Total TTC / Net à payer / Amount due), as printed." }
+  },
+  "required": ["supplier_name", "supplier_vat", "invoice_number", "invoice_date", "due_date", "currency", "po_number", "lines", "total_ht", "total_vat", "total_ttc"]
+}
