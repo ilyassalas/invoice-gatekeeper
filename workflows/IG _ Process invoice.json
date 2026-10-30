@@ -1,0 +1,947 @@
+{
+  "name": "IG | Process invoice",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        832,
+        -752
+      ],
+      "id": "27814262-bf23-43e5-a8c1-fbb3fece9bc5",
+      "name": "Start"
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.text }}",
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"supplier_name\": { \"type\": \"string\", \"description\": \"Legal name of the company that ISSUED the invoice (the seller). Never the customer.\" },\n    \"supplier_vat\": { \"type\": \"string\", \"description\": \"The seller's VAT number exactly as printed, without spaces. Empty string if absent.\" },\n    \"invoice_number\": { \"type\": \"string\", \"description\": \"Invoice number exactly as printed. Empty string if absent.\" },\n    \"invoice_date\": { \"type\": \"string\", \"description\": \"Invoice date as YYYY-MM-DD. Empty string if absent.\" },\n    \"due_date\": { \"type\": \"string\", \"description\": \"Payment due date as YYYY-MM-DD. Empty string if absent.\" },\n    \"currency\": { \"type\": \"string\", \"description\": \"ISO 4217 code, e.g. EUR, GBP, USD.\" },\n    \"po_number\": { \"type\": \"string\", \"description\": \"The customer's purchase order reference (bon de commande, votre commande, PO number). Empty string if there is none.\" },\n    \"lines\": {\n      \"type\": \"array\",\n      \"description\": \"One entry per invoice line, in the order printed.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"sku\": { \"type\": \"string\", \"description\": \"Product code / reference exactly as printed. Empty string if absent.\" },\n          \"description\": { \"type\": \"string\" },\n          \"quantity\": { \"type\": \"number\" },\n          \"unit_price\": { \"type\": \"number\", \"description\": \"Unit price excluding VAT, as printed.\" },\n          \"line_total\": { \"type\": \"number\", \"description\": \"Line amount excluding VAT, as printed.\" }\n        },\n        \"required\": [\"sku\", \"description\", \"quantity\", \"unit_price\", \"line_total\"]\n      }\n    },\n    \"total_ht\": { \"type\": \"number\", \"description\": \"Total excluding VAT (Total HT / Subtotal), as printed.\" },\n    \"total_vat\": { \"type\": \"number\", \"description\": \"VAT amount (TVA), as printed. 0 for reverse charge or zero-rated.\" },\n    \"total_ttc\": { \"type\": \"number\", \"description\": \"Total to pay including VAT (Total TTC / Net à payer / Amount due), as printed.\" }\n  },\n  \"required\": [\"supplier_name\", \"supplier_vat\", \"invoice_number\", \"invoice_date\", \"due_date\", \"currency\", \"po_number\", \"lines\", \"total_ht\", \"total_vat\", \"total_ttc\"]\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        1056,
+        -752
+      ],
+      "id": "9973b283-47e8-49b0-a149-0032dec957cc",
+      "name": "Read invoice",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1136,
+        -624
+      ],
+      "id": "9b13584e-edd5-46b6-a9ec-cf5dbb8c96f0",
+      "name": "OpenAI Chat Model",
+      "notesInFlow": false,
+      "credentials": {
+        "openAiApi": {
+          "id": "0kWdpDby234GYcuJ",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Code node \"Normalize & validate\" (Process workflow) — Mode: Run Once for Each Item\n// Input:  the Information Extractor's answer ($json.output) + the file info from the \"Start\" trigger\n// Output: one clean invoice + the list of problems found by plain rules (no AI here).\n// Principle: the AI copies what is printed; this code checks it.\n\nconst ai = $json.output ?? $json;               // the extractor puts its result in \"output\"\nconst start = $('Start').item.json;             // mode, source, source_ref, file_name\n\n// ---------- small helpers ----------\nconst r2 = (n) => Math.round(n * 100) / 100;                    // round to cents\nconst txt = (v) => (v === null || v === undefined ? '' : String(v).trim());\n\n// \"1 234,56 €\" -> 1234.56   |   \"€1,234.56\" -> 1234.56   |   12.5 -> 12.5\nfunction num(v) {\n  if (typeof v === 'number') return v;\n  let s = txt(v).replace(/[^\\d,.\\-]/g, '');                     // keep digits , . -\n  if (s === '') return null;\n  if (s.includes(',') && s.includes('.')) {\n    // the separator that comes last is the decimal one\n    s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\\./g, '').replace(',', '.') : s.replace(/,/g, '');\n  } else if (s.includes(',')) {\n    s = s.replace(',', '.');\n  }\n  const n = Number(s);\n  return Number.isFinite(n) ? n : null;\n}\n\n// \"2026-10-05\" stays, \"05/10/2026\" -> \"2026-10-05\", anything else -> null\nfunction isoDate(v) {\n  const s = txt(v);\n  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(s)) return s;\n  const m = s.match(/^(\\d{1,2})[\\/.\\-](\\d{1,2})[\\/.\\-](\\d{4})$/);\n  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : null;\n}\n\n// ---------- 1. normalize ----------\nconst invoice = {\n  mode: String(start.mode || 'live').trim().toLowerCase(),\n  source: start.source || '',\n  source_ref: start.source_ref || '',\n  file_name: start.file_name || '',\n  supplier_name: txt(ai.supplier_name),\n  supplier_vat: txt(ai.supplier_vat).replace(/\\s/g, '').toUpperCase(),\n  invoice_number: txt(ai.invoice_number).replace(/\\s/g, ''),\n  invoice_date: isoDate(ai.invoice_date),\n  due_date: isoDate(ai.due_date),\n  currency: txt(ai.currency).toUpperCase() || 'EUR',\n  po_number: txt(ai.po_number).replace(/\\s/g, '').toUpperCase(),\n  lines: (ai.lines || []).map((l) => ({\n    sku: txt(l.sku).replace(/\\s/g, '').toUpperCase(),\n    description: txt(l.description),\n    quantity: num(l.quantity) ?? 0,\n    unit_price: num(l.unit_price) ?? 0,\n    line_total: num(l.line_total) ?? 0,\n  })),\n  total_ht: num(ai.total_ht),\n  total_vat: num(ai.total_vat),\n  total_ttc: num(ai.total_ttc),\n};\n\n// ---------- 2. check ----------\nconst issues = [];\nconst add = (code, message) => issues.push({ code, message });\n\n// a) the fields a payment needs\nconst missing = ['supplier_vat', 'invoice_number', 'invoice_date', 'total_ttc']\n  .filter((f) => invoice[f] === null || invoice[f] === '' || invoice[f] === 0);\nif (missing.length) add('missing_field', `Missing on the invoice: ${missing.join(', ')}`);\n\n// b) the lines add up to the total before VAT\nconst linesSum = r2(invoice.lines.reduce((sum, l) => sum + l.line_total, 0));\nif (invoice.total_ht !== null && Math.abs(linesSum - invoice.total_ht) > 0.05) {\n  add('math_lines', `Lines add up to ${linesSum}, but the total before VAT says ${invoice.total_ht}`);\n}\n\n// c) total before VAT + VAT = total to pay\nif (invoice.total_ht !== null && invoice.total_vat !== null && invoice.total_ttc !== null) {\n  const expected = r2(invoice.total_ht + invoice.total_vat);\n  if (Math.abs(expected - invoice.total_ttc) > 0.05) {\n    add('math_total', `${invoice.total_ht} + VAT ${invoice.total_vat} = ${expected}, but the invoice asks for ${invoice.total_ttc}`);\n  }\n}\n\n// d) the VAT rate is one that exists in France (0 = reverse charge or export)\nif (invoice.total_ht > 0 && invoice.total_vat !== null) {\n  const rate = r2((invoice.total_vat / invoice.total_ht) * 100);\n  const allowed = [0, 2.1, 5.5, 10, 20];\n  if (!allowed.some((a) => Math.abs(a - rate) < 0.2)) add('vat_rate', `Unusual VAT rate: ${rate}%`);\n}\n\n// e) the dates make sense\nif (invoice.invoice_date && invoice.due_date && invoice.due_date < invoice.invoice_date) {\n  add('dates', `Due date ${invoice.due_date} is before the invoice date ${invoice.invoice_date}`);\n}\n\nreturn { json: { ...invoice, issues } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        -752
+      ],
+      "id": "f8b6d16f-f47b-4936-8fc6-55607b1e918e",
+      "name": "Normalize & validate"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- =====================================================================\n-- The 3 queries the Process workflow runs (Postgres node → Execute Query)\n-- Query Parameters: always written as an expression that returns an ARRAY,\n-- e.g. {{ [ $json.a, $json.b ] }} — a plain comma-separated list breaks\n-- as soon as a value contains a comma.\n-- =====================================================================\n\n-- ---------------------------------------------------------------------\n-- 1) \"Lookup\": everything the checks need, in ONE round trip.\n--    Always returns exactly one row, even when nothing is found.\n-- Query Parameters:\n--   {{ [ $json.supplier_vat, $json.po_number, $json.mode, $json.invoice_number ] }}\n-- ---------------------------------------------------------------------\nSELECT\n  (SELECT row_to_json(s) FROM ap.suppliers s WHERE s.vat_number = $1)                    AS supplier,\n  (SELECT row_to_json(p) FROM ap.purchase_orders p WHERE p.po_number = $2)               AS po,\n  (SELECT coalesce(json_agg(l), '[]'::json) FROM ap.po_lines l WHERE l.po_number = $2)   AS po_lines,\n  (SELECT count(*)::int FROM ap.invoices i\n    WHERE i.mode = $3 AND i.supplier_vat = $1 AND i.invoice_number = $4\n      AND i.status <> 'duplicate')                                                       AS existing_count;\n",
+        "options": {
+          "queryReplacement": "=   {{ [ $json.supplier_vat, $json.po_number, $json.mode, $json.invoice_number ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1632,
+        -752
+      ],
+      "id": "e929b3a5-604d-4194-99cd-eae87a938f6d",
+      "name": "Lookup",
+      "credentials": {
+        "postgres": {
+          "id": "5OVSFc0OJ0ZydFFh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// 1. Get the two inputs\nconst inv = $('Normalize & validate').item.json;          // the invoice the AI read and the code cleaned\nconst { supplier, po, po_lines, existing_count } = $json; // what Lookup found in the database\n\n// 2. Start from the problems already found, and make a helper to add new ones\nconst issues = [...inv.issues];\nconst add = (code, message) => issues.push({ code, message });\n\n// TODO 1: the supplier must be in our supplier list\nif (!supplier) {\n  add('unknown_supplier', `Supplier ${inv.supplier_name || inv.supplier_vat} is not in the supplier list`);\n}\n\n// TODO 2: there must be a purchase order\nif (!po) {\n  add('po_not_found', inv.po_number ? `PO ${inv.po_number} does not exist` : 'No PO reference on the invoice');\n} else {\n  // TODO 3: the PO must belong to this supplier and still be open\n  if (supplier && po.supplier_id !== supplier.id) {\n    add('po_supplier_mismatch', `PO ${po.po_number} belongs to another supplier`);\n  }\n  if (po.status !== 'open') {\n    add('po_closed', `PO ${po.po_number} is ${po.status}`);\n  }\n\n  // TODO 4: check every invoice line against the PO line with the same product code\n  for (const line of inv.lines) {\n    const poLine = po_lines.find((p) => p.sku.toUpperCase() === line.sku);\n\n    if (!poLine) {\n      add('line_not_on_po', `${line.sku} is not on PO ${po.po_number}`);\n      continue;   // nothing to compare, go to the next line\n    }\n    if (line.quantity > Number(poLine.qty)) {\n      add('qty_above_po', `${line.sku}: ${line.quantity} billed, ${Number(poLine.qty)} ordered`);\n    }\n    if (line.unit_price > Number(poLine.unit_price) * 1.02) {\n      add('price_above_po', `${line.sku}: billed ${line.unit_price} each, agreed ${Number(poLine.unit_price)}`);\n    }\n  }\n}\n\n// 3. Send the invoice on, with the supplier id and the full list of problems\nreturn {\n  json: {\n    ...inv,\n    supplier_id: supplier ? supplier.id : null,\n    existing_count: Number(existing_count) || 0,\n    issues,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1856,
+        -752
+      ],
+      "id": "e24ab523-6d47-469c-8572-e93fdbd529c7",
+      "name": "Match PO"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// The company's approval policy, in code\nconst APPROVAL_LIMIT = 1500;   // above this total, a manager must sign\n\nconst inv = $json;             // the invoice coming from Match PO\nconst issues = [...inv.issues];\nlet status;                    // \"let\" instead of \"const\": the value is decided below\n\n// Rule 1: already received → duplicate, and stop there (a duplicate is never paid)\nif (inv.existing_count > 0) {\n  status = 'duplicate';\n  issues.push({ code: 'duplicate', message: `Already received: ${inv.invoice_number} from ${inv.supplier_name}` });\n} else {\n  // Rule 2: big invoices always need a human\n  if (inv.total_ttc > APPROVAL_LIMIT) {\n    issues.push({ code: 'above_approval_limit', message: `${inv.total_ttc} ${inv.currency} is above the ${APPROVAL_LIMIT} limit: a manager signs it` });\n  }\n  // Rules 3 and 4: any problem → a human looks; no problem → approved automatically\n  status = issues.length > 0 ? 'needs_review' : 'auto_approved';\n}\n\nreturn {\n  json: {\n    ...inv,\n    issues,\n    status,\n    decided_by: status === 'auto_approved' ? 'rules' : null,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        -752
+      ],
+      "id": "ef5f3cb6-91e1-420c-8dad-4e0ea9208cd2",
+      "name": "Decide"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- ---------------------------------------------------------------------\n-- 2) \"Save invoice\": the whole invoice goes in as ONE JSON parameter,\n--    and Postgres maps each key to the column with the same name.\n--    It returns everything the next steps need (ledger, approval email),\n--    with dates cast to text so they don't shift with time zones.\n-- Query Parameters:\n--   {{ [ JSON.stringify($json) ] }}\n-- ---------------------------------------------------------------------\nINSERT INTO ap.invoices (mode, source, source_ref, file_name, supplier_id, supplier_name, supplier_vat,\n                         invoice_number, invoice_date, due_date, currency, po_number,\n                         total_ht, total_vat, total_ttc, lines, issues, status, decided_by, decided_at)\nSELECT r.mode, r.source, r.source_ref, r.file_name, r.supplier_id, r.supplier_name, r.supplier_vat,\n       r.invoice_number, r.invoice_date, r.due_date, r.currency, r.po_number,\n       r.total_ht, r.total_vat, r.total_ttc,\n       coalesce(r.lines, '[]'), coalesce(r.issues, '[]'),\n       r.status, r.decided_by,\n       CASE WHEN r.status = 'auto_approved' THEN now() END\nFROM jsonb_populate_record(NULL::ap.invoices, $1::jsonb) AS r\nRETURNING id, mode, status, decided_by, file_name, source_ref, supplier_name, invoice_number,\n          invoice_date::text AS invoice_date, due_date::text AS due_date, po_number, currency,\n          total_ht, total_vat, total_ttc, issues;\n",
+        "options": {
+          "queryReplacement": "={{ [ JSON.stringify($json) ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2304,
+        -752
+      ],
+      "id": "24c2e498-3620-47d1-ae41-1b9a89ef7e2d",
+      "name": "Save invoice",
+      "credentials": {
+        "postgres": {
+          "id": "5OVSFc0OJ0ZydFFh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "46cd0de0-cb7b-438e-8a94-1baafb6670e7",
+              "leftValue": "={{ $json.mode }}",
+              "rightValue": "live",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        816,
+        -368
+      ],
+      "id": "d47ed020-9aa1-47af-a9d2-c301e64d3ede",
+      "name": "Live only?"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "auto_approved",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "1b280373-6ffa-4614-a6e0-52af47716714"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "auto"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "887fa322-16d5-4b76-a8f5-d6d307a2cac6",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "needs_review",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "review"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7d82c1a8-d58d-488e-b4d2-de268f40da6a",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "duplicate",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "duplicate"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1248,
+        -400
+      ],
+      "id": "09ced3e1-e0b5-4d4f-9cae-980efc679386",
+      "name": "Route"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1itYIhw9UVxR-BkOy55yKztAEtRd0aw-UMKltVUKt5x8",
+          "mode": "list",
+          "cachedResultName": "Invoice Gatekeeper — Ledger",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1itYIhw9UVxR-BkOy55yKztAEtRd0aw-UMKltVUKt5x8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1itYIhw9UVxR-BkOy55yKztAEtRd0aw-UMKltVUKt5x8/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "recorded_at": "={{ $now.setZone('Africa/Casablanca').toFormat('yyyy-MM-dd HH:mm') }}",
+            "supplier": "={{ $json.supplier_name }}",
+            "invoice_number": "={{ $json.invoice_number }}",
+            "invoice_date": "={{ $json.invoice_date }}",
+            "due_date": "={{ $json.due_date }}",
+            "po_number": "={{ $json.po_number }}",
+            "currency": "={{ $json.currency }}",
+            "total_ht": "={{ $json.total_ht }}",
+            "total_vat": "={{ $json.total_vat }}",
+            "total_ttc": "={{ $json.total_ttc }}",
+            "decision": "={{ $json.status }}",
+            "decided_by": "={{ $json.decided_by }}",
+            "file_name": "={{ $json.file_name }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "recorded_at",
+              "displayName": "recorded_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "supplier",
+              "displayName": "supplier",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "invoice_number",
+              "displayName": "invoice_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "invoice_date",
+              "displayName": "invoice_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "due_date",
+              "displayName": "due_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "po_number",
+              "displayName": "po_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "currency",
+              "displayName": "currency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "total_ht",
+              "displayName": "total_ht",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "total_vat",
+              "displayName": "total_vat",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "total_ttc",
+              "displayName": "total_ttc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decision",
+              "displayName": "decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decided_by",
+              "displayName": "decided_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "file_name",
+              "displayName": "file_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1600,
+        -544
+      ],
+      "id": "e1fe941a-5724-42e6-9968-242f910aea5a",
+      "name": "Add to ledger",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ZIJkgxWVQdPLNn1X",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "sendTo": "approver@example.com",
+        "subject": "=Invoice to approve: {{ $json.supplier_name }} {{ $json.invoice_number }} — {{ $json.total_ttc }} {{ $json.currency }}",
+        "message": "=  {{ $json.supplier_name }} — invoice {{ $json.invoice_number }}<br>\n  PO: {{ $json.po_number || 'none' }} · Total: {{ $json.total_ttc }} {{ $json.currency }} · Due: {{ $json.due_date }}<br><br>\n  <b>Why it needs you:</b><br>\n  {{ $json.issues.map(i => '• ' + i.message).join('<br>') }}<br><br>\n  File: {{ $json.file_name }}",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "buttonDisapprovalStyle": "primary"
+          }
+        },
+        "options": {
+          "limitWaitTime": {
+            "values": {
+              "resumeAmount": 72
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1600,
+        -384
+      ],
+      "id": "466eb54a-d14a-474f-8caa-767c51288ddb",
+      "name": "Ask approver",
+      "webhookId": "0a819bc6-0c4b-44ec-a003-1218722f2cde",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "bGfUPSj7FA28IbNz",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "59ccee7e-324b-4a4d-b7a7-7fb63f0e7257",
+              "leftValue": true,
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1952,
+        -384
+      ],
+      "id": "9db32770-73b7-4d4c-a165-729d46f8c946",
+      "name": "Approved?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- ---------------------------------------------------------------------\n-- 3) \"Record decision\": after the human clicks Approve or Reject.\n-- Query Parameters (Approve branch):\n--   {{ [ $('Save invoice').item.json.id, 'approved', 'YOUR_APPROVER_EMAIL' ] }}\n-- Query Parameters (Reject branch):\n--   {{ [ $('Save invoice').item.json.id, 'rejected', 'YOUR_APPROVER_EMAIL' ] }}\n-- ---------------------------------------------------------------------\nUPDATE ap.invoices\nSET status = $2, decided_by = $3, decided_at = now()\nWHERE id = $1\nRETURNING id, mode, status, decided_by, file_name, source_ref, supplier_name, invoice_number,\n          invoice_date::text AS invoice_date, due_date::text AS due_date, po_number, currency,\n          total_ht, total_vat, total_ttc, issues;\n",
+        "options": {
+          "queryReplacement": "=  {{ [ $('Save invoice').item.json.id, 'approved', 'approver@example.com' ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2224,
+        -528
+      ],
+      "id": "5f741386-4e7a-46ad-a878-d4a7ac9a360d",
+      "name": "Record approval",
+      "credentials": {
+        "postgres": {
+          "id": "5OVSFc0OJ0ZydFFh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- ---------------------------------------------------------------------\n-- 3) \"Record decision\": after the human clicks Approve or Reject.\n-- Query Parameters (Approve branch):\n--   {{ [ $('Save invoice').item.json.id, 'approved', 'YOUR_APPROVER_EMAIL' ] }}\n-- Query Parameters (Reject branch):\n--   {{ [ $('Save invoice').item.json.id, 'rejected', 'YOUR_APPROVER_EMAIL' ] }}\n-- ---------------------------------------------------------------------\nUPDATE ap.invoices\nSET status = $2, decided_by = $3, decided_at = now()\nWHERE id = $1\nRETURNING id, mode, status, decided_by, file_name, source_ref, supplier_name, invoice_number,\n          invoice_date::text AS invoice_date, due_date::text AS due_date, po_number, currency,\n          total_ht, total_vat, total_ttc, issues;\n",
+        "options": {
+          "queryReplacement": "=  {{ [ $('Save invoice').item.json.id, ''rejected', 'approver@example.com' ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        2224,
+        -272
+      ],
+      "id": "618c237f-6898-4075-a895-9c9b5ae938ad",
+      "name": "Record rejection",
+      "credentials": {
+        "postgres": {
+          "id": "5OVSFc0OJ0ZydFFh",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1itYIhw9UVxR-BkOy55yKztAEtRd0aw-UMKltVUKt5x8",
+          "mode": "list",
+          "cachedResultName": "Invoice Gatekeeper — Ledger",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1itYIhw9UVxR-BkOy55yKztAEtRd0aw-UMKltVUKt5x8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1itYIhw9UVxR-BkOy55yKztAEtRd0aw-UMKltVUKt5x8/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "recorded_at": "={{ $now.toISO() }}",
+            "supplier": "={{ $json.supplier_name }}",
+            "invoice_number": "={{ $json.invoice_number }}",
+            "invoice_date": "={{ $json.invoice_date }}",
+            "due_date": "={{ $json.due_date }}",
+            "po_number": "={{ $json.po_number }}",
+            "currency": "={{ $json.currency }}",
+            "total_ht": "={{ $json.total_ht }}",
+            "total_vat": "={{ $json.total_vat }}",
+            "total_ttc": "={{ $json.total_ttc }}",
+            "decision": "={{ $json.status }}",
+            "decided_by": "={{ $json.decided_by }}",
+            "file_name": "={{ $json.file_name }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "recorded_at",
+              "displayName": "recorded_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "supplier",
+              "displayName": "supplier",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "invoice_number",
+              "displayName": "invoice_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "invoice_date",
+              "displayName": "invoice_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "due_date",
+              "displayName": "due_date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "po_number",
+              "displayName": "po_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "currency",
+              "displayName": "currency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "total_ht",
+              "displayName": "total_ht",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "total_vat",
+              "displayName": "total_vat",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "total_ttc",
+              "displayName": "total_ttc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decision",
+              "displayName": "decision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decided_by",
+              "displayName": "decided_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "file_name",
+              "displayName": "file_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2496,
+        -528
+      ],
+      "id": "b89cb360-d89c-45ee-8d94-44141a581840",
+      "name": "Add to ledger (approved)",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "ZIJkgxWVQdPLNn1X",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "approver@example.com",
+        "subject": "=Duplicate invoice blocked: {{ $json.supplier_name }} {{ $json.invoice_number }}",
+        "message": "=This invoice was already received. Nothing was added to the ledger. File: {{ $json.file_name }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1600,
+        -208
+      ],
+      "id": "4ce8c107-2c2d-4bcb-af24-1c503b6a6734",
+      "name": "Duplicate alert",
+      "webhookId": "c848fa1a-1110-4d95-9102-1957ef607932",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "bGfUPSj7FA28IbNz",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Read invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Read invoice",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read invoice": {
+      "main": [
+        [
+          {
+            "node": "Normalize & validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & validate": {
+      "main": [
+        [
+          {
+            "node": "Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup": {
+      "main": [
+        [
+          {
+            "node": "Match PO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match PO": {
+      "main": [
+        [
+          {
+            "node": "Decide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide": {
+      "main": [
+        [
+          {
+            "node": "Save invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save invoice": {
+      "main": [
+        [
+          {
+            "node": "Live only?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Live only?": {
+      "main": [
+        [
+          {
+            "node": "Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route": {
+      "main": [
+        [
+          {
+            "node": "Add to ledger",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ask approver",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Duplicate alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask approver": {
+      "main": [
+        [
+          {
+            "node": "Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved?": {
+      "main": [
+        [
+          {
+            "node": "Record approval",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record rejection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record approval": {
+      "main": [
+        [
+          {
+            "node": "Add to ledger (approved)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "dsUrVOU15le32ROX",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "d134a014-a6dd-4dc1-a789-f49b108e96fe",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0e17aa866808805e936918b23eefbb29eccb5bf11b4da64290eee4fd85a27485"
+  },
+  "nodeGroups": [],
+  "id": "jxfV3ckrE7SX1lBu",
+  "tags": []
+}
