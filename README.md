@@ -1,4 +1,4 @@
-# Invoice Gatekeeper (demo project)
+# Invoice Gatekeeper (project)
 
 An AI accounts-payable workflow built with **n8n**, **OpenAI** and **PostgreSQL**.
 Supplier invoices arrive by email. AI reads each PDF; plain rules then check it against the company's
